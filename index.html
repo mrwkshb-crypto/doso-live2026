@@ -37,6 +37,7 @@ button{font:inherit;color:inherit}
 .top-in{max-width:560px;margin:0 auto}
 .bar{display:flex;justify-content:space-between;align-items:baseline;gap:12px}
 .bar h1{margin:0;font-size:15px;font-weight:700;letter-spacing:.04em}
+.tabs{display:flex;gap:6px;margin-top:10px}.tabs button{flex:1;border:1px solid rgba(255,255,255,.35);background:transparent;color:var(--onnavy);border-radius:8px;padding:6px 0;font-weight:700;cursor:pointer}.tabs button[aria-pressed=true]{background:var(--onnavy);color:var(--navy)}
 .bar .sub{font-size:12px;opacity:.7}
 .clock{font-family:var(--m);font-size:15px;font-variant-numeric:tabular-nums}
 .now{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px;align-items:end;margin-top:10px}
@@ -111,6 +112,7 @@ input{width:100%;min-width:0;font:inherit;font-size:15px;color:var(--ink);backgr
 
 <div class="top"><div class="top-in">
   <div class="bar"><h1>同窓ライブ　11/7(土) 神楽坂天窓</h1><div class="clock" id="clock">--:--:--</div></div>
+  <div class="tabs"><button type="button" id="tshow" aria-pressed="true">本番</button><button type="button" id="treh" aria-pressed="false">リハーサル</button></div>
   <div class="now">
     <div><div class="lab" id="nowlab">進行状況</div><div class="who" id="nowwho">読み込み中…</div><div class="el" id="nowel"></div></div>
     <div class="delay ontime" id="delay" hidden><div class="v" id="delayv">±0</div><div class="t" id="delayt">定刻</div></div>
@@ -136,7 +138,7 @@ input{width:100%;min-width:0;font:inherit;font-size:15px;color:var(--ink);backgr
 (function(){
 var CC={1:'var(--c1)',2:'var(--c2)',3:'var(--c3)',4:'var(--c4)',0:'var(--mute)'};
 var SUPABASE_URL='https://wqxkknazxtxpqveqwrqn.supabase.co',SUPABASE_KEY='sb_publishable_c1MB6AiZzzbkKK-pQEQXng_HUjgfOtc';
-var db=true,PIN='',canEdit=false,sched=null,prog={act:{}},loaded=0,firstScroll=false,editing=false,draft=null;
+var db=true,phase='show',PIN='',canEdit=false,sched=null,prog={act:{}},loaded=0,firstScroll=false,editing=false,draft=null;
 var $=function(id){return document.getElementById(id)};
 function pad(n){return (n<10?'0':'')+n}
 function tzParts(ms){var p=new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Tokyo',hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'}).formatToParts(new Date(ms)),o={};p.forEach(function(x){o[x.type]=x.value});return o}
@@ -146,7 +148,9 @@ function hhmmss(ms){var o=tzParts(ms);return (o.hour==='24'?'00':o.hour)+':'+o.m
 function parseT(s){if(!s)return null;var a=s.split(':');return +a[0]*60+ +a[1]+(+a[2]||0)/60}
 function toast(t){var e=$('toast');e.textContent=t;e.hidden=false;clearTimeout(toast._t);toast._t=setTimeout(function(){e.hidden=true},2200)}
 
-function items(){return sched&&sched.items?sched.items:[]}
+function allItems(){return sched&&sched.items?sched.items:[]}
+function items(){return allItems().filter(function(x){return (x.phase||'show')===phase})}
+function PL(){return phase==='reh'?'リハーサル':'本番'}
 function pS(it){return parseT(it.start)}
 function pE(it){return pS(it)+(+it.len||0)}
 function nowM(){return mod(Date.now())}
@@ -169,14 +173,14 @@ function derive(){
 function renderStatus(){
   $('clock').textContent=hhmmss(Date.now());
   if(!db){$('nowwho').textContent='サインインすると表示されます';$('delay').hidden=true;return}
-  if(!items().length){$('nowwho').textContent=loaded?'タイムテーブルは準備中です':'読み込み中…';$('delay').hidden=true;return}
+  if(!items().length){$('nowwho').textContent=loaded?PL()+'の予定はまだ登録されていません':'読み込み中…';$('delay').hidden=true;return}
   var s=derive(),act=prog.act||{};
   var lab=$('nowlab'),who=$('nowwho'),el=$('nowel');
-  if(s.cur){lab.textContent='いま進行中';who.textContent=s.cur.name;
+  if(s.cur){lab.textContent=PL()+' 進行中';who.textContent=s.cur.name;
     var a=act[s.cur.id],em=Math.max(0,Math.floor((Date.now()-a.s)/60000));
     el.textContent=hhmm(mod(a.s))+' 開始・経過 '+em+'分（予定 '+s.cur.len+'分）'}
-  else if(s.done===0){lab.textContent='開演前';who.textContent=items()[0].name;el.textContent='最初の出番 '+items()[0].start+' 予定'}
-  else if(!s.next){lab.textContent='進行状況';who.textContent='すべて終了しました';el.textContent=''}
+  else if(s.done===0){lab.textContent=phase==='reh'?'リハ前':'開演前';who.textContent=items()[0].name;el.textContent='最初の出番 '+items()[0].start+' 予定'}
+  else if(!s.next){lab.textContent='進行状況';who.textContent=PL()+'は すべて終了しました';el.textContent=''}
   else{lab.textContent='次の出番';who.textContent=s.next.name;el.textContent='前の出番は終了済み・予定 '+s.next.start}
   var dl=$('delay'),r=Math.round(s.d);dl.hidden=(s.done===0&&!s.cur);
   dl.className='delay '+(r>=1?'late':r<=-1?'early':'ontime');
@@ -199,7 +203,7 @@ function renderList(){
   var L=$('list');
   if(!db){L.innerHTML='<div class="empty">このページはサインインした状態で開くと、進行状況を確認できます。</div>';return}
   var its=items();
-  if(!its.length){L.innerHTML='<div class="empty">'+(loaded?'タイムテーブルはまだ登録されていません。':'読み込み中…')+'</div>';return}
+  if(!its.length){L.innerHTML='<div class="empty">'+(loaded?PL()+'の予定はまだ登録されていません。':'読み込み中…')+'</div>';return}
   var s=derive(),act=prog.act||{},html='',lastCool=-1,r=Math.round(s.d),seenUp=false;
   its.forEach(function(it){
     if(it.cool!==lastCool&&it.cool){
@@ -260,16 +264,20 @@ function openEditor(){
   drawEditor();$('sheet').hidden=false;
 }
 function drawEditor(){
-  var h='<h2>編集</h2><p>予定時刻・出番の追加削除・実績の修正ができます。保存すると全員の画面に反映されます。</p>';
-  h+='<div class="ed"><div class="l1"><div><label for="shiftmin">全体の予定を何分ずらす（＋で遅く）</label><input id="shiftmin" type="number" value="0" inputmode="numeric"></div><button class="mini" id="shiftgo" type="button" style="align-self:end">ずらす</button></div></div>';
+  var h='<h2>編集（'+PL()+'）</h2><p>いま開いている「'+PL()+'」の予定を編集します。保存すると全員の画面に反映されます。</p>';
+  h+='<div class="ed"><strong style="font-size:13px">'+PL()+'の一括変更</strong>'
+   +'<div class="l1"><div><label for="shiftmin">全体をずらす（分・＋で遅く）</label><input id="shiftmin" type="number" value="0" inputmode="numeric"></div><button class="mini" id="shiftgo" type="button" style="align-self:end">ずらす</button></div>'
+   +'<div class="l1"><div><label for="firstt">先頭の開始時刻に合わせる</label><input id="firstt" type="time"></div><button class="mini" id="firstgo" type="button" style="align-self:end">合わせる</button></div>'
+   +'<div class="l1"><div><label for="alllen">出番の長さをすべて（分）</label><input id="alllen" type="number" inputmode="numeric" placeholder="例 10"></div><button class="mini" id="lengo" type="button" style="align-self:end">変更</button></div></div>';
   draft.items.forEach(function(it,i){
+    if((it.phase||'show')!==phase)return;
     var a=draft.act[it.id]||{};
     h+='<div class="ed" data-i="'+i+'"><div class="l1"><div><label>名前</label><input data-f="name" value="'+esc(it.name)+'"></div><div style="display:flex;gap:4px;align-self:end"><button class="mini" data-a="up" type="button" aria-label="上へ">↑</button><button class="mini" data-a="down" type="button" aria-label="下へ">↓</button><button class="mini" data-a="del" type="button" aria-label="削除">×</button></div></div>'
     +'<div class="l2"><div><label>予定開始</label><input data-f="start" type="time" value="'+esc(it.start)+'"></div><div><label>長さ(分)</label><input data-f="len" type="number" inputmode="numeric" value="'+esc(it.len)+'"></div>'
     +'<div><label>実際の開始</label><input data-f="as" type="time" step="1" value="'+(a.s?hhmmss(a.s):'')+'"></div><div><label>実際の終了</label><input data-f="ae" type="time" step="1" value="'+(a.e?hhmmss(a.e):'')+'"></div></div></div>';
   });
   h+='<div class="acts"><button class="btn" id="eadd" type="button">出番を追加</button><button class="btn" id="ebrk" type="button">休憩を追加</button></div>';
-  h+='<div class="acts"><button class="btn go" id="esave" type="button">保存</button><button class="btn" id="ecancel" type="button">閉じる</button><button class="btn warn" id="ereset" type="button">進行状況をリセット</button></div>';
+  h+='<div class="acts"><button class="btn go" id="esave" type="button">保存</button><button class="btn" id="ecancel" type="button">閉じる</button><button class="btn warn" id="ereset" type="button">この日程の進行をリセット</button></div>';
   $('sheetin').innerHTML=h;
 }
 function pullDraft(){
@@ -288,18 +296,22 @@ function pullDraft(){
 }
 $('sheetin').addEventListener('click',function(e){
   var t=e.target.closest('button');if(!t)return;
-  if(t.id==='shiftgo'){pullDraft();var d=+$('shiftmin').value||0;draft.items.forEach(function(it){it.start=hhmm(parseT(it.start)+d)});drawEditor();return}
-  if(t.id==='eadd'||t.id==='ebrk'){pullDraft();var last=draft.items[draft.items.length-1],st=last?hhmm(pE(last)):'13:00',brk=t.id==='ebrk';
-    draft.items.push({id:'x'+Date.now().toString(36),name:brk?'休憩':'新しい出番',cool:last?last.cool:1,kind:brk?'break':'act',start:st,len:brk?10:15});drawEditor();
+  if(t.id==='shiftgo'){pullDraft();var d=+$('shiftmin').value||0;draft.items.forEach(function(it){if((it.phase||'show')===phase)it.start=hhmm(parseT(it.start)+d)});drawEditor();return}
+  if(t.id==='firstgo'){pullDraft();var ft=parseT($('firstt').value);var ph=draft.items.filter(function(it){return (it.phase||'show')===phase});if(ft!=null&&ph.length){var dd=ft-parseT(ph[0].start);ph.forEach(function(it){it.start=hhmm(parseT(it.start)+dd)})}drawEditor();return}
+  if(t.id==='lengo'){pullDraft();var L=+$('alllen').value;if(L>0)draft.items.forEach(function(it){if((it.phase||'show')===phase&&it.kind!=='break')it.len=L});drawEditor();return}
+  if(t.id==='eadd'||t.id==='ebrk'){pullDraft();var ph2=draft.items.filter(function(it){return (it.phase||'show')===phase}),last=ph2[ph2.length-1],st=last?hhmm(pE(last)):'13:00',brk=t.id==='ebrk';
+    draft.items.push({id:'x'+Date.now().toString(36),name:brk?'休憩':'新しい出番',cool:last?last.cool:1,kind:brk?'break':'act',phase:phase,start:st,len:brk?10:15});drawEditor();
     $('sheet').scrollTo(0,$('sheet').scrollHeight);return}
   if(t.id==='ecancel'){editing=false;$('sheet').hidden=true;renderAll();return}
   if(t.id==='ereset'){if(t.dataset.arm!=='1'){t.dataset.arm='1';t.textContent='もう一度押すとリセット';return}
-    draft.act={};editing=false;$('sheet').hidden=true;firstScroll=false;saveSched(true);return}
+    draft.items.forEach(function(it){if((it.phase||'show')===phase)delete draft.act[it.id]});editing=false;$('sheet').hidden=true;firstScroll=false;saveSched(true);return}
   if(t.id==='esave'){pullDraft();editing=false;$('sheet').hidden=true;saveSched(false);return}
   if(t.dataset.a){pullDraft();var i=+t.closest('.ed').dataset.i,a=t.dataset.a,x=draft.items;
     if(a==='del')x.splice(i,1);
-    if(a==='up'&&i>0){var q=x[i];x[i]=x[i-1];x[i-1]=q}
-    if(a==='down'&&i<x.length-1){var q2=x[i];x[i]=x[i+1];x[i+1]=q2}
+    var j=i-1;while(j>=0&&(x[j].phase||'show')!==phase)j--;
+    if(a==='up'&&j>=0){var q=x[i];x[i]=x[j];x[j]=q}
+    var k=i+1;while(k<x.length&&(x[k].phase||'show')!==phase)k++;
+    if(a==='down'&&k<x.length){var q2=x[i];x[i]=x[k];x[k]=q2}
     drawEditor()}
 });
 function saveSched(reset){
@@ -318,7 +330,7 @@ function load(){
   Promise.all([api('schedule?select=*&order=pos'),api('progress?select=*')]).then(function(r){
     if(busy||editing)return;
     var act={};r[1].forEach(function(p){act[p.id]={s:p.s,e:p.e}});
-    sched={items:r[0].map(function(x){return {id:x.id,name:x.name,sub:x.sub,cool:x.cool,kind:x.kind,start:x.start,len:x.len}})};
+    sched={items:r[0].map(function(x){return {id:x.id,name:x.name,sub:x.sub,cool:x.cool,kind:x.kind,phase:x.phase||'show',start:x.start,len:x.len}})};
     prog={act:act};loaded=3;renderAll();
   }).catch(function(){loaded=3;renderAll()});
 }
@@ -330,6 +342,11 @@ function drawFoot(){
   $('pgo').onclick=function(){tryPin($('pin').value)};
 }
 function tryPin(p){rpc('admin_check',{p_pin:p}).then(function(ok){if(ok){PIN=p;canEdit=true;try{localStorage.setItem('douso_pin',p)}catch(x){}drawFoot();renderAll();toast('運営モードにしました')}else toast('PINが違います')}).catch(function(){toast('接続できません')})}
+/* phase tabs */
+function setPhase(p,keep){phase=p;firstScroll=false;$('tshow').setAttribute('aria-pressed',p==='show');$('treh').setAttribute('aria-pressed',p==='reh');
+  if(!keep){try{localStorage.setItem('douso_phase',p)}catch(x){}}renderAll();window.scrollTo(0,0)}
+$('tshow').onclick=function(){setPhase('show')};$('treh').onclick=function(){setPhase('reh')};
+try{var sph=localStorage.getItem('douso_phase');if(sph==='reh')setPhase('reh',true)}catch(x){}
 /* boot */
 setInterval(function(){renderStatus()},1000);
 setInterval(function(){if(!editing)renderList()},30000);
