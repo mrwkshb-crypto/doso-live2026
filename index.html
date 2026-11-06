@@ -317,13 +317,25 @@ $('sheetin').addEventListener('click',function(e){
     draft.items.forEach(function(it){if((it.phase||'show')===phase)delete draft.act[it.id]});editing=false;$('sheet').hidden=true;firstScroll=false;saveSched(true);return}
   if(t.id==='esave'){pullDraft();editing=false;$('sheet').hidden=true;saveSched(false);return}
   if(t.dataset.a){pullDraft();var i=+t.closest('.ed').dataset.i,a=t.dataset.a,x=draft.items;
-    if(a==='del'){var dl=+x[i].len||0,dc=x[i].cool;delete draft.act[x[i].id];x.splice(i,1);if(!SHEET_CSV&&dl){var dn=shiftAfter(i,-dl,dc);if(dn)toast('同じクールの後ろ'+dn+'件を'+dl+'分前へ詰めました')}}
+    if(a==='del'){var dl=+x[i].len||0,dc=x[i].cool;delete draft.act[x[i].id];x.splice(i,1);if(!SHEET_CSV&&dl){var dn=shiftAfter(i,-dl,dc),db2=fitBreak(i,dc);if(dn||db2)toast((dn?'同じクールの後ろ'+dn+'件を'+dl+'分前へ詰めました':'時刻を調整しました')+brMsg(db2))}}
     var j=i-1;while(j>=0&&(x[j].phase||'show')!==phase)j--;
     if(a==='up'&&j>=0){var q=x[i];x[i]=x[j];x[j]=q}
     var k=i+1;while(k<x.length&&(x[k].phase||'show')!==phase)k++;
     if(a==='down'&&k<x.length){var q2=x[i];x[i]=x[k];x[k]=q2}
     drawEditor()}
 });
+function fitBreak(pos,cool){/* 本番: クールの直後の休憩を「クール終了〜次のクール開始」に合わせる */
+  var c=+cool||0;if(phase!=='show'||!c)return null;
+  var X=draft.items,idx=[];for(var n=0;n<X.length;n++)if((X[n].phase||'show')===phase)idx.push(n);
+  var last=-1;for(var k=0;k<idx.length;k++){if((+X[idx[k]].cool||0)===c)last=k;else if(last>=0&&idx[k]>=pos)break}
+  if(last<0)return null;var br=X[idx[last+1]],nx=X[idx[last+2]];
+  if(!br||(+br.cool||0)!==0||br.kind!=='break')return null;
+  var st=parseT(X[idx[last]].start)+(+X[idx[last]].len||0);br.start=hhmm(st);
+  if(nx){var L=parseT(nx.start)-st;br.len=Math.max(0,Math.round(L));return {len:br.len,over:L<0?Math.round(-L):0}}
+  return {len:br.len,over:0};
+}
+function syncStarts(){$('sheetin').querySelectorAll('.ed[data-i]').forEach(function(r){var it=draft.items[+r.dataset.i],si=r.querySelector('input[data-f=start]'),li=r.querySelector('input[data-f=len]');if(si)si.value=it.start;if(li)li.value=it.len})}
+function brMsg(b){return b?(b.over?'・休憩0分（次のクールに'+b.over+'分食い込み）':'・休憩'+b.len+'分'):''}
 function shiftAfter(from,d,cool){/* from番目以降、同じ日程・同じクールが続く間だけ d分ずらす（本番はクールの外に影響させない） */
   var c=+cool||0,n2=0;
   for(var n=from;n<draft.items.length;n++){var it=draft.items[n];if((it.phase||'show')!==phase)continue;
@@ -336,7 +348,7 @@ $('sheetin').addEventListener('change',function(e){
   var row=t.closest('.ed[data-i]');if(!row)return;var i=+row.dataset.i;
   var old=+draft.items[i].len||0;pullDraft();
   var d=(+draft.items[i].len||0)-old;
-  if(d){var sn=shiftAfter(i+1,d,draft.items[i].cool);if(!sn){toast('同じクール内に後ろの予定がないため、時刻はずらしていません');return}$('sheetin').querySelectorAll('.ed[data-i]').forEach(function(r){var si=r.querySelector('input[data-f=start]');if(si)si.value=draft.items[+r.dataset.i].start});toast('同じクールの後ろ'+sn+'件を'+(d>0?d+'分後ろへ':(-d)+'分前へ')+'ずらしました')}
+  if(d){var sn=shiftAfter(i+1,d,draft.items[i].cool),bf=fitBreak(i,draft.items[i].cool);if(!sn&&!bf){toast('同じクール内に後ろの予定がないため、時刻はずらしていません');return}syncStarts();toast((sn?'同じクールの後ろ'+sn+'件を'+(d>0?d+'分後ろへ':(-d)+'分前へ')+'ずらしました':'クールの終了時刻が変わりました')+brMsg(bf))}
 });
 function saveSched(reset){
   var its=draft.items;if(!SHEET_CSV)sched={items:its};prog={act:draft.act};renderAll();
