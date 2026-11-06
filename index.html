@@ -364,7 +364,9 @@ $('sheetin').addEventListener('change',function(e){
   if(d){var sn=shiftAfter(i+1,d,draft.items[i].cool),bf=fitBreak(i,draft.items[i].cool);if(!sn&&!bf){toast('同じクール内に後ろの予定がないため、時刻はずらしていません');return}syncStarts();toast((sn?'同じクールの後ろ'+sn+'件を'+(d>0?d+'分後ろへ':(-d)+'分前へ')+'ずらしました':'クールの終了時刻が変わりました')+brMsg(bf))}
 });
 function saveSched(reset){
-  var its=draft.items;if(!SHEET_CSV)sched={items:its};prog={act:draft.act};renderAll();
+  /* 編集していないほうの日程も一緒に保存する（保存は表を丸ごと置き換えるため） */
+  var oth=allItems().filter(function(x){return (x.phase||'show')!==phase});
+  var its=phase==='reh'?draft.items.concat(oth):oth.concat(draft.items);if(!SHEET_CSV)sched={items:its};prog={act:draft.act};renderAll();
   (SHEET_CSV?Promise.resolve():rpc('admin_save_schedule',{p_pin:PIN,p_items:its})).then(function(){return rpc('admin_set_progress',{p_pin:PIN,p_act:draft.act})})
    .then(function(){toast(reset?'進行状況をリセットしました':'保存しました')}).catch(function(e){toast('保存できませんでした：'+(e&&e.message||''))});
 }
