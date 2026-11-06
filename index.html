@@ -262,7 +262,7 @@ function actDate(hms,ref){ // keep event day: build ms from today's JST date + h
 }
 function openEditor(){
   editing=true;
-  draft={items:JSON.parse(JSON.stringify(items())),act:JSON.parse(JSON.stringify(prog.act||{}))};
+  draft={items:JSON.parse(JSON.stringify(items())),act:JSON.parse(JSON.stringify(prog.act||{})),act0:JSON.parse(JSON.stringify(prog.act||{}))};
   drawEditor();$('sheet').hidden=false;
 }
 function drawEditor(){
@@ -332,7 +332,7 @@ function fitBreak(pos,cool){/* 本番: クールの直後の休憩を「クー�
   if(!br||(+br.cool||0)!==0||br.kind!=='break')return null;
   var st=parseT(X[idx[last]].start)+(+X[idx[last]].len||0);br.start=hhmm(st);
   if(nx){var L=parseT(nx.start)-st;br.len=Math.max(0,Math.round(L));return {len:br.len,over:L<0?Math.round(-L):0}}
-  return {len:br.len,over:0};
+  return null;
 }
 function syncStarts(){$('sheetin').querySelectorAll('.ed[data-i]').forEach(function(r){var it=draft.items[+r.dataset.i],si=r.querySelector('input[data-f=start]'),li=r.querySelector('input[data-f=len]');if(si)si.value=it.start;if(li)li.value=it.len})}
 function brMsg(b){return b?(b.over?'・休憩0分（次のクールに'+b.over+'分食い込み）':'・休憩'+b.len+'分'):''}
@@ -343,7 +343,7 @@ function swapTimed(p,q,dir){/* p<q の隣り合う2件を入れ替え、開始�
   B.start=hhmm(t0);A.start=hhmm(t0+(+B.len||0)+gap);
   if(SHEET_CSV)return;
   /* 休憩をまたいで動かした出番は、移った先のクールに入れる */
-  if(phase==='show'&&mv.kind!=='break'&&(+nb.cool||0)===0&&c0>0){
+  if(phase==='show'&&mv.kind!=='break'&&(+nb.cool||0)===0){
     var r=dir==='down'?q+1:p-1;while(r>=0&&r<x.length&&(x[r].phase||'show')!==phase)r+=dir==='down'?1:-1;
     var nc=(r>=0&&r<x.length)?(+x[r].cool||0):0;if(nc>0)mv.cool=nc}
   var b1=fitBreak(Math.min(p,q),c0),b2=(+mv.cool||0)!==c0?fitBreak(Math.min(p,q),mv.cool):null;
@@ -364,11 +364,25 @@ $('sheetin').addEventListener('change',function(e){
   if(d){var sn=shiftAfter(i+1,d,draft.items[i].cool),bf=fitBreak(i,draft.items[i].cool);if(!sn&&!bf){toast('同じクール内に後ろの予定がないため、時刻はずらしていません');return}syncStarts();toast((sn?'同じクールの後ろ'+sn+'件を'+(d>0?d+'分後ろへ':(-d)+'分前へ')+'ずらしました':'クールの終了時刻が変わりました')+brMsg(bf))}
 });
 function saveSched(reset){
-  /* 編集していないほうの日程も一緒に保存する（保存は表を丸ごと置き換えるため） */
-  var oth=allItems().filter(function(x){return (x.phase||'show')!==phase});
-  var its=phase==='reh'?draft.items.concat(oth):oth.concat(draft.items);if(!SHEET_CSV)sched={items:its};prog={act:draft.act};renderAll();
-  (SHEET_CSV?Promise.resolve():rpc('admin_save_schedule',{p_pin:PIN,p_items:its})).then(function(){return rpc('admin_set_progress',{p_pin:PIN,p_act:draft.act})})
-   .then(function(){toast(reset?'進行状況をリセットしました':'保存しました')}).catch(function(e){toast('保存できませんでした：'+(e&&e.message||''))});
+  /* 保存直前に最新の予定と進行状況を読み直し、
+     ・編集していないほうの日程はそのまま残す（保存は表を丸ごと置き換えるため）
+     ・編集画面を開いている間に他の人が押した「開始／終了」を消さない（この画面で変えた分だけ上書き） */
+  var mine=draft.items,act=draft.act,act0=draft.act0||{},ph=phase,ids={};
+  mine.forEach(function(it){ids[it.id]=1});busy=true;
+  var J=function(v){return JSON.stringify(v||null)};
+  Promise.all([SHEET_CSV?Promise.resolve(allItems()):loadSchedule(),api('progress?select=*')]).then(function(r){
+    var oth=r[0].filter(function(x){return (x.phase||'show')!==ph});
+    var its=ph==='reh'?mine.concat(oth):oth.concat(mine);
+    var srv={};r[1].forEach(function(p){srv[p.id]={s:p.s,e:p.e}});
+    var out={},keys={};[srv,act,act0].forEach(function(o){Object.keys(o).forEach(function(k){keys[k]=1})});
+    Object.keys(keys).forEach(function(k){
+      var v=(J(act[k])!==J(act0[k]))?act[k]:srv[k];        /* この画面で変えたものは画面の値、それ以外は最新の値 */
+      if(reset&&ids[k])v=null;
+      if(!ids[k]&&J(act[k])!==J(act0[k])&&!act[k])v=null;  /* 削除した出番の記録は消す */
+      if(v&&v.s)out[k]=v});
+    if(!SHEET_CSV)sched={items:its};prog={act:out};renderAll();
+    return (SHEET_CSV?Promise.resolve():rpc('admin_save_schedule',{p_pin:PIN,p_items:its})).then(function(){return rpc('admin_set_progress',{p_pin:PIN,p_act:out})});
+  }).then(function(){busy=false;toast(reset?'進行状況をリセットしました':'保存しました')}).catch(function(e){busy=false;toast('保存できませんでした：'+(e&&e.message||'')+' もう一度保存してください');editing=true;$('sheet').hidden=false;drawEditor()});
 }
 $('bedit').onclick=openEditor;
 
