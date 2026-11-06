@@ -319,9 +319,9 @@ $('sheetin').addEventListener('click',function(e){
   if(t.dataset.a){pullDraft();var i=+t.closest('.ed').dataset.i,a=t.dataset.a,x=draft.items;
     if(a==='del'){var dl=+x[i].len||0,dc=x[i].cool;delete draft.act[x[i].id];x.splice(i,1);if(!SHEET_CSV&&dl){var dn=shiftAfter(i,-dl,dc),db2=fitBreak(i,dc);if(dn||db2)toast((dn?'同じクールの後ろ'+dn+'件を'+dl+'分前へ詰めました':'時刻を調整しました')+brMsg(db2))}}
     var j=i-1;while(j>=0&&(x[j].phase||'show')!==phase)j--;
-    if(a==='up'&&j>=0){var q=x[i];x[i]=x[j];x[j]=q}
+    if(a==='up'&&j>=0)swapTimed(j,i,'up');
     var k=i+1;while(k<x.length&&(x[k].phase||'show')!==phase)k++;
-    if(a==='down'&&k<x.length){var q2=x[i];x[i]=x[k];x[k]=q2}
+    if(a==='down'&&k<x.length)swapTimed(i,k,'down');
     drawEditor()}
 });
 function fitBreak(pos,cool){/* 本番: クールの直後の休憩を「クール終了〜次のクール開始」に合わせる */
@@ -336,6 +336,19 @@ function fitBreak(pos,cool){/* 本番: クールの直後の休憩を「クー�
 }
 function syncStarts(){$('sheetin').querySelectorAll('.ed[data-i]').forEach(function(r){var it=draft.items[+r.dataset.i],si=r.querySelector('input[data-f=start]'),li=r.querySelector('input[data-f=len]');if(si)si.value=it.start;if(li)li.value=it.len})}
 function brMsg(b){return b?(b.over?'・休憩0分（次のクールに'+b.over+'分食い込み）':'・休憩'+b.len+'分'):''}
+function swapTimed(p,q,dir){/* p<q の隣り合う2件を入れ替え、開始時刻を長さで計算し直す（間の空きは保つ） */
+  var x=draft.items,A=x[p],B=x[q],t0=parseT(A.start),gap=parseT(B.start)-(t0+(+A.len||0));
+  var mv=dir==='down'?A:B,nb=dir==='down'?B:A,c0=+mv.cool||0;
+  x[p]=B;x[q]=A;
+  B.start=hhmm(t0);A.start=hhmm(t0+(+B.len||0)+gap);
+  if(SHEET_CSV)return;
+  /* 休憩をまたいで動かした出番は、移った先のクールに入れる */
+  if(phase==='show'&&mv.kind!=='break'&&(+nb.cool||0)===0&&c0>0){
+    var r=dir==='down'?q+1:p-1;while(r>=0&&r<x.length&&(x[r].phase||'show')!==phase)r+=dir==='down'?1:-1;
+    var nc=(r>=0&&r<x.length)?(+x[r].cool||0):0;if(nc>0)mv.cool=nc}
+  var b1=fitBreak(Math.min(p,q),c0),b2=(+mv.cool||0)!==c0?fitBreak(Math.min(p,q),mv.cool):null;
+  toast('入れ替えて開始時刻を調整しました'+((+mv.cool||0)!==c0?'（第'+mv.cool+'クールへ移動）':'')+brMsg(b1||b2));
+}
 function shiftAfter(from,d,cool){/* from番目以降、同じ日程・同じクールが続く間だけ d分ずらす（本番はクールの外に影響させない） */
   var c=+cool||0,n2=0;
   for(var n=from;n<draft.items.length;n++){var it=draft.items[n];if((it.phase||'show')!==phase)continue;
