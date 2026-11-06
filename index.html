@@ -271,8 +271,16 @@ function drawEditor(){
    +'<div class="l1"><div><label for="shiftmin">全体をずらす（分・＋で遅く）</label><input id="shiftmin" type="number" value="0" inputmode="numeric"></div><button class="mini" id="shiftgo" type="button" style="align-self:end">ずらす</button></div>'
    +'<div class="l1"><div><label for="firstt">先頭の開始時刻に合わせる</label><input id="firstt" type="time"></div><button class="mini" id="firstgo" type="button" style="align-self:end">合わせる</button></div>'
    +'<div class="l1"><div><label for="alllen">出番の長さをすべて（分）</label><input id="alllen" type="number" inputmode="numeric" placeholder="例 10"></div><button class="mini" id="lengo" type="button" style="align-self:end">変更</button></div></div>';
+  var eCool=-1;
   draft.items.forEach(function(it,i){
     if((it.phase||'show')!==phase)return;
+    var c=+it.cool||0;
+    if(phase==='show'&&c!==eCool){
+      if(c){var ct=draft.items.filter(function(x){return (x.phase||'show')==='show'&&(+x.cool||0)===c&&x.kind==='act'}).length;
+        h+='<div class="cool" style="--cc:'+(CC[c]||'var(--mute)')+'"><b>第'+c+'クール</b><span></span><small>'+ct+'組</small></div>'}
+      else if(eCool>0)h+='<div class="cool" style="--cc:var(--mute);margin:14px 0 8px"><span></span></div>';
+    }
+    eCool=c;
     var a=draft.act[it.id]||{};
     h+='<div class="ed" data-i="'+i+'"><div class="l1"><div><label>名前</label><input data-f="name"'+(SHEET_CSV?' disabled':'')+' value="'+esc(it.name)+'"></div><div style="display:'+(SHEET_CSV?'none':'flex')+';gap:4px;align-self:end"><button class="mini" data-a="up" type="button" aria-label="上へ">↑</button><button class="mini" data-a="down" type="button" aria-label="下へ">↓</button><button class="mini" data-a="del" type="button" aria-label="削除">×</button></div></div>'
     +'<div class="l2"><div><label>予定開始</label><input data-f="start" type="time"'+(SHEET_CSV?' disabled':'')+' value="'+esc(it.start)+'"></div><div><label>長さ(分)</label><input data-f="len" type="number" inputmode="numeric"'+(SHEET_CSV?' disabled':'')+' value="'+esc(it.len)+'"></div>'
